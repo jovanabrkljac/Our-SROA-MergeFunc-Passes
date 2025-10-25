@@ -3,6 +3,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/IRBuilder.h"
 
 using namespace llvm;
 
@@ -13,32 +14,43 @@ struct MySROA : public FunctionPass {
     MySROA() : FunctionPass(ID) {}
 
     bool runOnFunction(Function &F) override {
-        errs() << "Analyzing function: " << F.getName() << "\n";
+        bool changed = false;
 
-        for (auto &B : F)
-            for (auto &I : B)
+        errs() << "Running struct decomposition on function: " << F.getName() << "\n";
 
-                if (auto *A = dyn_cast<AllocaInst>(&I)) {
+        for (auto &B : F) {
+            for (auto it = B.begin(); it != B.end();) {
+                Instruction *I = &*it++;
+                if (auto *A = dyn_cast<AllocaInst>(I)) {
                     Type *T = A->getAllocatedType();
 
                     if (auto *S = dyn_cast<StructType>(T)) {
-                        errs() << "  Found struct allocation: ";
+                        errs() << "  Decomposing struct: ";
                         S->print(errs());
                         errs() << "\n";
 
-                    } else if (auto *Arr = dyn_cast<ArrayType>(T)) {
-                        errs() << "  Found array allocation of element type: ";
-                        Arr->getElementType()->print(errs());
-                        errs() << " [" << Arr->getNumElements() << " elements]\n";
+                        IRBuilder<> Builder(A);
+                        for (unsigned i = 0; i < S->getNumElements(); ++i) {
+                            Type *ElemType = S->getElementType(i);
+                            StringRef name = A->getName();
+                            AllocaInst *NewAlloca =
+                                Builder.CreateAlloca(ElemType, nullptr,
+                                                      name + "_field" + std::to_string(i));
+                            errs() << "    Created alloca: " << NewAlloca->getName() << "\n";
+                        }
+                        changed = true;
                     }
                 }
+            }
+        }
 
-        return false;
+        return changed;
     }
+
 
 };
 
 }
 
 char MySROA::ID = 0;
-static RegisterPass<MySROA> X("mysroa", "Simple SROA detection");
+static RegisterPass<MySROA> X("mysroa", "Simple SROA");
