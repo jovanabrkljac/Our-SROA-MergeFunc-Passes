@@ -4,6 +4,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/IRBuilder.h"
+#include <map>
 
 using namespace llvm;
 
@@ -14,38 +15,84 @@ struct MySROA : public FunctionPass {
     MySROA() : FunctionPass(ID) {}
 
     bool runOnFunction(Function &F) override {
-        bool changed = false;
+    bool changed = false;
 
-        errs() << "Running struct decomposition on function: " << F.getName() << "\n";
+    errs() << "SROA Replacement phase: " << F.getName() << "\n";
 
-        for (auto &B : F) {
-            for (auto it = B.begin(); it != B.end();) {
-                Instruction *I = &*it++;
-                if (auto *A = dyn_cast<AllocaInst>(I)) {
-                    Type *T = A->getAllocatedType();
+    for (auto &B : F) {
+        for (auto it = B.begin(); it != B.end();) {
+            Instruction *I = &*it++;
+            auto *A = dyn_cast<AllocaInst>(I);
+            if (!A)
+                continue;
 
-                    if (auto *S = dyn_cast<StructType>(T)) {
-                        errs() << "  Decomposing struct: ";
-                        S->print(errs());
-                        errs() << "\n";
+            auto *S = dyn_cast<StructType>(A->getAllocatedType());
+            if (!S)
+                continue;
 
-                        IRBuilder<> Builder(A);
-                        for (unsigned i = 0; i < S->getNumElements(); ++i) {
-                            Type *ElemType = S->getElementType(i);
-                            StringRef name = A->getName();
-                            AllocaInst *NewAlloca =
-                                Builder.CreateAlloca(ElemType, nullptr,
-                                                      name + "_field" + std::to_string(i));
-                            errs() << "    Created alloca: " << NewAlloca->getName() << "\n";
-                        }
+            IRBuilder<> Builder(A);
+            StringRef base = A->getName();
+            if (base.empty())
+                base = "var";
+
+            std::map<unsigned, AllocaInst*> FieldAllocas;
+            for (unsigned i = 0; i < S->getNumElements(); ++i) {
+                Type *ElemTy = S->getElementType(i);
+                auto *NewA = Builder.CreateAlloca(ElemTy, nullptr,
+                    base + "_field" + std::to_string(i));
+                FieldAllocas[i] = NewA;
+                errs() << "  Created alloca: " << NewA->getName() << "\n";
+            }
+
+           
+            std::vector<GetElementPtrInst*> GEPs;
+            for (auto *U : A->users())
+                if (auto *G = dyn_cast<GetElementPtrInst>(U))
+                    GEPs.push_back(G);
+
+            for (auto *GEP : GEPs) {
+                if (GEP->getNumIndices() != 2)
+                    continue;
+
+                auto *CI = dyn_cast<ConstantInt>(GEP->getOperand(2));
+                if (!CI)
+                    continue;
+
+                unsigned FieldIndex = CI->getZExtValue();
+                auto *FieldAlloca = FieldAllocas[FieldIndex];
+                if (!FieldAlloca)
+                    continue;
+
+                
+                for (auto *GU : llvm::make_early_inc_range(GEP->users())) {
+                    if (auto *L = dyn_cast<LoadInst>(GU)) {
+                        L->setOperand(0, FieldAlloca);
+                        errs() << "    Replaced load for field "
+                               << FieldIndex << " -> " << FieldAlloca->getName() << "\n";
+                        changed = true;
+                    } else if (auto *S = dyn_cast<StoreInst>(GU)) {
+                        S->setOperand(1, FieldAlloca);
+                        errs() << "    Replaced store for field "
+                               << FieldIndex << " -> " << FieldAlloca->getName() << "\n";
                         changed = true;
                     }
                 }
+
+                if (GEP->use_empty()) {
+                    GEP->eraseFromParent();
+                    errs() << "    Removed GEP for field " << FieldIndex << "\n";
+                }
+            }
+
+            if (A->use_empty()) {
+                A->eraseFromParent();
+                errs() << "  Removed original alloca " << base << "\n";
             }
         }
-
-        return changed;
     }
+
+    return changed;
+}
 
 
 };
