@@ -18,7 +18,7 @@ struct MySROA : public FunctionPass {
     bool runOnFunction(Function &F) override {
     bool changed = false;
 
-    errs() << "SROA Replacement phase: " << F.getName() << "\n";
+    errs() << "SROA Decomposition and Replacement phase: " << F.getName() << "\n";
 
     for (auto &B : F) {
         for (auto it = B.begin(); it != B.end();) {
@@ -127,6 +127,39 @@ struct MySROA : public FunctionPass {
     errs() << "Cleanup summary for " << F.getName() << ":\n";
     errs() << "  Scalarized allocas: " << Scalarized << "\n";
     errs() << "  Removed unused _field allocas: " << RemovedAllocas << "\n";
+
+
+    errs() << "SROA Value Propagation phase: " << F.getName() << "\n";
+
+    std::vector<Instruction*> ToErase;
+
+    for (auto &B : F) {
+        std::map<Value*, Value*> LastStoredValue;
+
+        for (auto &I : B) {
+            if (auto *S = dyn_cast<StoreInst>(&I)) {
+                Value *Ptr = S->getPointerOperand();
+                Value *Val = S->getValueOperand();
+                LastStoredValue[Ptr] = Val;
+            } 
+            else if (auto *L = dyn_cast<LoadInst>(&I)) {
+                Value *Ptr = L->getPointerOperand();
+                auto It = LastStoredValue.find(Ptr);
+                if (It != LastStoredValue.end()) {
+                    Value *StoredVal = It->second;
+                    L->replaceAllUsesWith(StoredVal);
+                    ToErase.push_back(L);   
+                    changed = true;
+                    errs() << "  Propagated load -> " << Ptr->getName() << "\n";
+                }
+            }
+        }
+    }
+
+
+    for (auto *I : ToErase)
+        I->eraseFromParent();
+
 
     return changed;
 }
