@@ -3,6 +3,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/IR/IRBuilder.h"
 #include <map>
 
@@ -90,6 +91,42 @@ struct MySROA : public FunctionPass {
             }
         }
     }
+
+    errs() << "SROA Cleanup phase: " << F.getName() << "\n";
+
+    unsigned RemovedAllocas = 0;
+    unsigned Scalarized = 0;
+
+    std::vector<AllocaInst*> ToRemove;
+    for (auto &B : F) {
+        for (auto &I : B) {
+            if (auto *A = dyn_cast<AllocaInst>(&I)) {
+                if (A->getName().contains("_field") && A->use_empty()) {
+                    ToRemove.push_back(A);
+                } else if (A->getName().contains("_field")) {
+                    ++Scalarized;
+                }
+            }
+        }
+    }
+
+    for (auto *A : ToRemove) {
+        A->eraseFromParent();
+        ++RemovedAllocas;
+    }
+
+    if (!ToRemove.empty())
+        changed = true;
+
+    if (verifyFunction(F, &errs())) {
+        errs() << "Verification failed for function: " << F.getName() << "\n";
+    } else {
+        errs() << "Function verified successfully: " << F.getName() << "\n";
+    }
+
+    errs() << "Cleanup summary for " << F.getName() << ":\n";
+    errs() << "  Scalarized allocas: " << Scalarized << "\n";
+    errs() << "  Removed unused _field allocas: " << RemovedAllocas << "\n";
 
     return changed;
 }
