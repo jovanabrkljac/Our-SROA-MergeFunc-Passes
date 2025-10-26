@@ -1,19 +1,17 @@
-#include <stdio.h>
-
-struct Inner {
-    int x;
-    int y;
+struct Pair {
+    int a;
+    int b;
 };
 
-struct Outer {
-    struct Inner in;
-    int z;
-};
+int looptest(int n) {
+    struct Pair p;
+    p.a = 0;
+    p.b = 1;
 
-int nested(int a, int b, int c) {
-    struct Outer o;
-    o.in.x = a;
-    o.in.y = b;
-    o.z = c;
-    return o.in.x + o.in.y + o.z;
+    for (int i = 0; i < n; i++) {
+        p.a += i;
+        p.b += p.a;
+    }
+
+    return p.a + p.b;
 }

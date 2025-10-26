@@ -3,6 +3,7 @@
 struct Pair {
     int x;
     int y;
+    int z;
 };
 
 int update(int x, int y) {
