@@ -1,24 +1,19 @@
-struct Pair {
-    int a;
-    int b;
-    int c;
+#include <stdio.h>
+
+struct Inner {
+    int x;
+    int y;
 };
 
-int update(int x, int y) {
-    struct Pair p;
-    p.a = x + y;
-    p.b = x - y;
+struct Outer {
+    struct Inner in;
+    int z;
+};
 
-    int t1 = p.a;
-    int t2 = p.b;
-
-    p.a = t1 * 2;
-    p.b = t2 * 3;
-
-    if (x > 0)
-        p.a = p.a + 1;
-    else
-        p.b = p.b + 1;
-
-    return p.a + p.b;
+int nested(int a, int b, int c) {
+    struct Outer o;
+    o.in.x = a;
+    o.in.y = b;
+    o.z = c;
+    return o.in.x + o.in.y + o.z;
 }

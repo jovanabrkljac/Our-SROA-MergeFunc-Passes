@@ -1,12 +1,19 @@
-struct Data {
+#include <stdio.h>
+
+struct Pair {
     int a;
     int b;
-    int c;
 };
 
-int test(int x) {
-    struct Data d;
-    d.a = x + 1;
-    d.b = x + 2;
-    return d.a;
+int branchy(int x) {
+    struct Pair p;
+    p.a = 5;
+    p.b = 10;
+
+    if (x > 0)
+        p.a += 1;
+    else
+        p.b -= 1;
+
+    return p.a + p.b;
 }
