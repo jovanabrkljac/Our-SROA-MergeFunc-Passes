@@ -5,6 +5,8 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/Transforms/Utils/PromoteMemToReg.h"
+#include "llvm/IR/Dominators.h" 
 #include <map>
 
 using namespace llvm;
@@ -18,7 +20,19 @@ struct MySROA : public FunctionPass {
     bool runOnFunction(Function &F) override {
     bool changed = false;
 
-    errs() << "SROA Decomposition and Replacement phase: " << F.getName() << "\n";
+    errs() << "=== Running MySROA + mem2reg on function: " << F.getName() << " ===\n";
+    
+     unsigned LoadsBefore = 0, StoresBefore = 0, AllocasBefore = 0, InstBefore = 0;
+        for (auto &B : F) {
+            for (auto &I : B) {
+                InstBefore++;
+                if (isa<LoadInst>(&I)) LoadsBefore++;
+                if (isa<StoreInst>(&I)) StoresBefore++;
+                if (isa<AllocaInst>(&I)) AllocasBefore++;
+            }
+        }
+    
+    errs() << "SROA decomposition phase...\n";
 
     for (auto &B : F) {
         for (auto it = B.begin(); it != B.end();) {
@@ -92,7 +106,7 @@ struct MySROA : public FunctionPass {
         }
     }
 
-    errs() << "SROA Cleanup phase: " << F.getName() << "\n";
+    errs() << "SROA Cleanup phase...\n";
 
     unsigned RemovedAllocas = 0;
     unsigned Scalarized = 0;
@@ -128,37 +142,44 @@ struct MySROA : public FunctionPass {
     errs() << "  Scalarized allocas: " << Scalarized << "\n";
     errs() << "  Removed unused _field allocas: " << RemovedAllocas << "\n";
 
+     errs() << "\n--- Running built-in mem2reg ---\n";
 
-    errs() << "SROA Value Propagation phase: " << F.getName() << "\n";
+        DominatorTree DT(F);
+        std::vector<AllocaInst*> Allocas;
+        for (auto &B : F) {
+            for (auto &I : B)
+                if (auto *A = dyn_cast<AllocaInst>(&I))
+                    Allocas.push_back(A);
+        }
 
-    std::vector<Instruction*> ToErase;
-
-    for (auto &B : F) {
-        std::map<Value*, Value*> LastStoredValue;
-
-        for (auto &I : B) {
-            if (auto *S = dyn_cast<StoreInst>(&I)) {
-                Value *Ptr = S->getPointerOperand();
-                Value *Val = S->getValueOperand();
-                LastStoredValue[Ptr] = Val;
-            } 
-            else if (auto *L = dyn_cast<LoadInst>(&I)) {
-                Value *Ptr = L->getPointerOperand();
-                auto It = LastStoredValue.find(Ptr);
-                if (It != LastStoredValue.end()) {
-                    Value *StoredVal = It->second;
-                    L->replaceAllUsesWith(StoredVal);
-                    ToErase.push_back(L);   
-                    changed = true;
-                    errs() << "  Propagated load -> " << Ptr->getName() << "\n";
-                }
+        if (!Allocas.empty()) {
+            PromoteMemToReg(Allocas, DT);
+            changed = true;
+            errs() << "mem2reg promoted " << Allocas.size() << " allocas\n";
+        } else {
+            errs() << "No allocas found for mem2reg.\n";
+        }
+        
+        unsigned LoadsAfter = 0, StoresAfter = 0, AllocasAfter = 0, InstAfter = 0;
+        for (auto &B : F) {
+            for (auto &I : B) {
+                InstAfter++;
+                if (isa<LoadInst>(&I)) LoadsAfter++;
+                if (isa<StoreInst>(&I)) StoresAfter++;
+                if (isa<AllocaInst>(&I)) AllocasAfter++;
             }
         }
-    }
 
+        errs() << "\n=== Optimization Summary for " << F.getName() << " ===\n";
+        errs() << "Loads before:  " << LoadsBefore << " → after: " << LoadsAfter
+               << "  (removed: " << (int)(LoadsBefore - LoadsAfter) << ")\n";
+        errs() << "Stores before: " << StoresBefore << " → after: " << StoresAfter
+               << "  (removed: " << (int)(StoresBefore - StoresAfter) << ")\n";
+        errs() << "Allocas before:" << AllocasBefore << " → after: " << AllocasAfter
+               << "  (removed: " << (int)(AllocasBefore - AllocasAfter) << ")\n";
+        errs() << "Instructions:  " << InstBefore << " → after: " << InstAfter
+               << "  (removed: " << (int)(InstBefore - InstAfter) << ")\n";
 
-    for (auto *I : ToErase)
-        I->eraseFromParent();
 
 
     return changed;
