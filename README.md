@@ -1,28 +1,43 @@
-# MySROA – Custom LLVM Scalar Replacement of Aggregates Pass
+# MySROA & MyMergeFunc – Custom LLVM Optimization Passes
 
 ### Overview
 
-**MySROA** is a **simple, custom LLVM optimization pass** that demonstrates the idea of  
-**Scalar Replacement of Aggregates (SROA)** on **basic examples and simple structures**.
+This project implements two **custom LLVM optimization passes** for **basic and simplified cases**:  
+- **MySROA** – *Scalar Replacement of Aggregates*  
+- **MyMergeFunc** – *Function Merging using Structural Hashing*  
+
+Developed as a **study project**, these passes demonstrate how to build and combine simple LLVM optimizations at the IR level using the **legacy pass manager (LLVM 14)**.  
+The implementations are designed to work on **fundamental examples and basic structures**, illustrating the core concepts rather than handling all edge cases.
 
 ---
 
 ### Features
 
-- **SROA decomposition:**  
-  Breaks down aggregate types (e.g., structs) into individual scalar `allocas`.
+#### MySROA (Scalar Replacement of Aggregates)
+- **Struct decomposition:**  
+  Splits aggregate types (like `structs`) into individual scalar `allocas`.
 
 - **Instruction rewrite:**  
-  Replaces `load` and `store` instructions that access aggregates with equivalent scalar operations.
+  Replaces `load` and `store` operations on aggregates with equivalent scalar operations.
 
-- **Automatic mem2reg promotion:**  
-  After decomposition, the pass invokes LLVM’s built-in `mem2reg` to promote scalar variables to SSA form.
+- **Automatic mem2reg:**  
+  Runs LLVM’s built-in **mem2reg** pass to promote variables to SSA form.
 
-- **Optimization statistics:**  
+- **Statistics:**  
   Displays counts of loads, stores, and allocas before and after optimization, along with total instruction count.
 
-- **Legacy pass manager support:**  
-  Implemented using LLVM’s **legacy pass manager** for compatibility with LLVM 14 and the `opt-14` tool.
+#### MyMergeFunc (Function Merging)
+- **Function hashing:**  
+  Generates structural hashes for functions to detect duplicates or similar function bodies.
+
+- **Function comparison:**  
+  Compares instruction-level structure and operands between candidate functions.
+
+- **Automatic merging:**  
+  Replaces identical or structurally equivalent function bodies with a single representative function.
+
+- **Statistics:**  
+  Reports the number of merged functions, total instruction reduction, and module verification status.
 
 ---
 
@@ -30,31 +45,16 @@
 📘 [View implementation explanation (Serbian)](link-ka-objasnjenju)
 
 ---
-### Build Instructions
 
-To build the project, make sure **LLVM 14** and **CMake** are installed.  
-Then follow these steps:
-
-
-```bash
-mkdir build && cd build
-cmake ..
-make
-```
----
 ###  Testing
 
-All test cases are executed automatically using the provided **test.sh** script:
+All test cases (for MySROA, MyMergeFunc, and combined) are executed automatically using the provided test.sh script:
 
 ```bash
 cd test
 ./test.sh
 ```
-If you want to test the pass manually (outside the provided `/test` examples),  
-you can compile any C file into LLVM IR and then run the pass using `clang` and `opt`.
+If you want to test the passes manually (outside the provided /test examples),
+you can compile any C file into LLVM IR and then run the passes using clang and opt.
 
-```bash
-clang-14 -O0 -Xclang -disable-O0-optnone -emit-llvm -S -g -fno-discard-value-names your_test.c -o your_test.ll
 
-opt-14 -enable-new-pm=0 -load ../llvm-pass/build/libMySROA.so -mysroa -S your_test.ll -o your_test_out.ll
-```
