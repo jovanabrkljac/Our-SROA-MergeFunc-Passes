@@ -9,7 +9,8 @@ find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
-add_library(MySROA SHARED MySROA.cpp)
+add_library(MySROA SHARED MySROA.cpp MergeFuncPass.cpp)
+
 
 set_target_properties(MySROA PROPERTIES
     COMPILE_FLAGS "-fno-rtti -Wall"
