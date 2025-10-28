@@ -41,8 +41,8 @@ The implementations are designed to work on **fundamental examples and basic str
 
 ---
 
-**Explanation for implementation** – In Serbian.  
-📘 [View implementation explanation (Serbian)](link-ka-objasnjenju)
+**Presentation** – In Serbian.  
+📘 [View presentation (Serbian)](https://github.com/jovanabrkljac/Our-SROA-MergeFunc-Passes/blob/main/presentation/prezentacija_kk.pdf)
 
 ---
 
