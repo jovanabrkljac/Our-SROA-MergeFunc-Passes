@@ -14,13 +14,15 @@
 #include <unordered_map>
 #include <algorithm>
 #include "llvm/ADT/Hashing.h"
+#include "llvm/IR/Verifier.h"
+
 
 
 
 using namespace llvm;
 
 namespace {
-  struct MergeFuncPass : public ModulePass {
+struct MergeFuncPass : public ModulePass {
     static char ID;
     MergeFuncPass() : ModulePass(ID) {}
     std::unordered_map<Value*, Value*> VariablesMap;
@@ -37,10 +39,10 @@ namespace {
         if(VariablesMap.count(Op1)){ // Ako u mapi imamo nas levi operand ali se on ne slaze sa levim operandom iz druge funkcije
                                                     // To znaci da nisu iste instrukcije
             if (VariablesMap[Op1] != Op2)
-                    return false;
+                return false;
             }
         else if ((isConstant(Op1) && !isConstant(Op2)) || 
-             (isConstant(Op2) && !isConstant(Op1)) || 
+                   (isConstant(Op2) && !isConstant(Op1)) ||
              (isConstant(Op1) && isConstant(Op2) && constValue(Op1) != constValue(Op2))) return false;
         
         return true;
@@ -81,13 +83,13 @@ namespace {
                             size_t leftH  = isConstant(L) ? hash_value(constValue(L)) : hash_value(L->getType()->getTypeID());
                             size_t rightH = isConstant(R) ? hash_value(constValue(R)) : hash_value(R->getType()->getTypeID());
                             helperVec = {leftH,rightH};
-                            std::sort(helperVec.begin(), helperVec.end());
+                        std::sort(helperVec.begin(), helperVec.end());
                             for (auto h : helperVec){
                                 H = hash_combine(H,h);
                             }
-                            continue;
-                        }
+                        continue;
                     }
+                }
 
 
                 for (unsigned i=0; i< I.getNumOperands(); i++){
@@ -132,7 +134,7 @@ namespace {
         for (BasicBlock& BB:*F2){
             BBFunc2.push_back(&BB);
         }
-        for (int i=0;i<F1->size();i++){
+        for (size_t i=0;i<F1->size();i++){
             if (BBFunc1[i]->size() != BBFunc2[i]->size()) return false; //Broj instrukcija unutar istog Basic Blocka mora biti isti
             auto it1 = BBFunc1[i]->begin();
             auto it2 = BBFunc2[i]->begin();
@@ -163,7 +165,7 @@ namespace {
                             if(!direct) return false;
                         }
                     }else{
-                        for(int i=0; i< it1->getNumOperands(); i++){
+                        for(size_t i=0; i< it1->getNumOperands(); i++){
                             Value* Op1 = it1->getOperand(i);
                             Value* Op2 = it2->getOperand(i);
                             if(!eqOperands(Op1,Op2)) return false;
@@ -179,14 +181,29 @@ namespace {
         return true;
     }
     bool runOnModule(Module &M) override {
-      std::unordered_map<size_t, std::vector<Function*> > HashGroups;
-      //Ova mapa za svaki hash cuva funkcije koje imaju taj hash
-      for(auto &F : M){ //Popunim hash vrednosti jednim prolazom kroz modul
-        size_t H = hashFunction(F);
-        HashGroups[H].push_back(&F);
-      }
+
+        unsigned FuncBefore = 0, FuncAfter = 0;
+        unsigned InstBefore = 0, InstAfter = 0;
+        unsigned MergedPairs = 0, Candidates = 0;
+
+        for (auto &F : M) {
+            if (!F.isDeclaration()) {
+                FuncBefore++;
+                for (auto &B : F)
+                    InstBefore += B.size();
+            }
+        }
+
+        std::unordered_map<size_t, std::vector<Function*>> HashGroups;
+
+        for (auto &F : M) {
+            if (!F.isDeclaration()) {
+                size_t H = hashFunction(F);
+                HashGroups[H].push_back(&F);
+            }
+        }
       for (auto &pair : HashGroups){
-        auto &Functions = pair.second;
+            auto &Functions = pair.second;
         if(Functions.size() < 2) continue;
 
         auto cmpFunctions = [](Function *A, Function *B) {
@@ -199,21 +216,41 @@ std::sort(Functions.begin(), Functions.end(), cmpFunctions);
             for(size_t j=i+1;j<Functions.size();){
                 Function* F2 = Functions[j];
                 if(sameFunctionBody(F1,F2)){
-                    F2->replaceAllUsesWith(F1);
-                    F2->eraseFromParent();
-                    Functions.erase(Functions.begin() + j);
+                        errs() << " Merged: " << F1->getName() << " + " << F2->getName() << "\n";
+                        F2->replaceAllUsesWith(F1);
+                        F2->eraseFromParent();
+                        Functions.erase(Functions.begin() + j);
                     ++j;
                 }else{
-                    ++j;
+                        ++j;
+                    }
                 }
             }
         }
-      }
 
-      return false;
+        for (auto &F : M) {
+            if (!F.isDeclaration()) {
+                FuncAfter++;
+                for (auto &B : F)
+                    InstAfter += B.size();
+            }
+        }
+
+        bool Verified = !verifyModule(M, &errs());
+
+        errs() << " Functions: " << FuncBefore << " -> " << FuncAfter
+               << "  (merged " << MergedPairs << " pairs)\n";
+        errs() << " Candidates for merging: " << Candidates << "\n";
+        errs() << " Instructions: " << InstBefore << " -> " << InstAfter
+               << "  (reduced by " << (int)(InstBefore - InstAfter) << ")\n";
+        errs() << (Verified ? "  Module verified successfully\n"
+                            : "  Verification failed\n");
+        errs() << "------------------------------------------\n";
+
+        return MergedPairs > 0;
     }
-  };
+};
 }
 
 char MergeFuncPass::ID = 0;
-static RegisterPass<MergeFuncPass> X("merge-pass", "Mergefunc pass using hash");
+static RegisterPass<MergeFuncPass> X("mymergefunc", "Merge similar functions using hash");

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-project(MySROA LANGUAGES C CXX)
+project(MyPasses LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
@@ -9,9 +9,10 @@ find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
-add_library(MySROA SHARED MySROA.cpp MergeFuncPass.cpp)
+
+add_library(MySROA MODULE MySROA.cpp)
+set_target_properties(MySROA PROPERTIES COMPILE_FLAGS "-fno-rtti -Wall")
 
 
-set_target_properties(MySROA PROPERTIES
-    COMPILE_FLAGS "-fno-rtti -Wall"
-)
+add_library(MergeFunc MODULE MergeFuncPass.cpp)
+set_target_properties(MergeFunc PROPERTIES COMPILE_FLAGS "-fno-rtti -Wall")
